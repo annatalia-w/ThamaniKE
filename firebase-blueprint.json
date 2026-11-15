@@ -1,0 +1,188 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Employment and salary profile for an authenticated Kenyan user, isolated from PII.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the document owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Full name of the employee.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "company": {
+          "type": "string",
+          "description": "Employer or organization name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "workId": {
+          "type": "string",
+          "description": "Employee or staff identification code.",
+          "minLength": 1,
+          "maxLength": 60,
+          "pattern": "^[a-zA-Z0-9_\\-\\/\\. ]+$"
+        },
+        "salaryAmount": {
+          "type": "number",
+          "description": "Monthly salary figure in Kenyan Shillings (KES)."
+        },
+        "salaryType": {
+          "type": "string",
+          "description": "Indicates whether salaryAmount is gross or net pay.",
+          "enum": ["gross", "net"],
+          "minLength": 3,
+          "maxLength": 5
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "fullName",
+        "company",
+        "workId",
+        "salaryAmount",
+        "salaryType",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivatePii": {
+      "title": "UserPrivatePii",
+      "description": "Strictly isolated PII contact record for the user under the Split Collection strategy.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the document owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified email address of the user.",
+          "minLength": 3,
+          "maxLength": 254,
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the PII record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the PII record was last updated."
+        }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "UserBasketData": {
+      "title": "UserBasketData",
+      "description": "Optional user-configured cost of a basket of goods across 2021-2026 in KES.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the document owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "basketName": {
+          "type": "string",
+          "description": "Label for the tracked household basket of goods.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "cost2021": {
+          "type": "number",
+          "description": "Basket cost in KES for 2021."
+        },
+        "cost2022": {
+          "type": "number",
+          "description": "Basket cost in KES for 2022."
+        },
+        "cost2023": {
+          "type": "number",
+          "description": "Basket cost in KES for 2023."
+        },
+        "cost2024": {
+          "type": "number",
+          "description": "Basket cost in KES for 2024."
+        },
+        "cost2025": {
+          "type": "number",
+          "description": "Basket cost in KES for 2025."
+        },
+        "cost2026": {
+          "type": "number",
+          "description": "Basket cost in KES for 2026."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes describing items included in the basket.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the basket was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the basket was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "basketName",
+        "cost2021",
+        "cost2022",
+        "cost2023",
+        "cost2024",
+        "cost2025",
+        "cost2026",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores each user's employment metadata and saved monthly salary preferences."
+    },
+    "/users/{userId}/private/{piiId}": {
+      "schema": { "$ref": "#/entities/UserPrivatePii" },
+      "description": "Split-collection storage for isolated user PII (email address) restricted to owner."
+    },
+    "/users/{userId}/baskets/{basketId}": {
+      "schema": { "$ref": "#/entities/UserBasketData" },
+      "description": "Stores user-entered 2021-2026 basket of goods price series."
+    }
+  }
+}

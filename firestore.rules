@@ -1,0 +1,266 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isNumberInRange(val, minVal, maxVal) {
+      return (val is int || val is float) && val >= minVal && val <= maxVal;
+    }
+
+    function hasValidParentUser(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId))
+        && get(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+    }
+
+    function hasValidParentUserAfter(userId) {
+      return existsAfter(/databases/$(database)/documents/users/$(userId))
+        && getAfter(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+    }
+
+    // Validation Blueprint: UserProfile (/users/{userId})
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid',
+          'fullName',
+          'company',
+          'workId',
+          'salaryAmount',
+          'salaryType',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid',
+          'fullName',
+          'company',
+          'workId',
+          'salaryAmount',
+          'salaryType',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.uid == request.auth.uid
+        && isValidId(data.uid)
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 100
+        && data.company is string && data.company.size() >= 1 && data.company.size() <= 120
+        && data.workId is string && data.workId.size() >= 1 && data.workId.size() <= 60 && data.workId.matches('^[a-zA-Z0-9_\\-\\/\\. ]+$')
+        && isNumberInRange(data.salaryAmount, 0, 1000000000)
+        && data.salaryType is string && data.salaryType.size() >= 3 && data.salaryType.size() <= 5
+        && (data.salaryType == 'gross' || data.salaryType == 'net')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: UserPrivatePii (/users/{userId}/private/{piiId})
+    function isValidUserPrivatePii(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.uid == request.auth.uid
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: UserBasketData (/users/{userId}/baskets/{basketId})
+    function isValidUserBasketData(data) {
+      return data.keys().hasAll([
+          'uid',
+          'basketName',
+          'cost2021',
+          'cost2022',
+          'cost2023',
+          'cost2024',
+          'cost2025',
+          'cost2026',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid',
+          'basketName',
+          'cost2021',
+          'cost2022',
+          'cost2023',
+          'cost2024',
+          'cost2025',
+          'cost2026',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.uid == request.auth.uid
+        && isValidId(data.uid)
+        && data.basketName is string && data.basketName.size() >= 1 && data.basketName.size() <= 100
+        && isNumberInRange(data.cost2021, 0, 100000000)
+        && isNumberInRange(data.cost2022, 0, 100000000)
+        && isNumberInRange(data.cost2023, 0, 100000000)
+        && isNumberInRange(data.cost2024, 0, 100000000)
+        && isNumberInRange(data.cost2025, 0, 100000000)
+        && isNumberInRange(data.cost2026, 0, 100000000)
+        && data.notes is string && data.notes.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Master Profile Collection: /users/{userId}
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isVerifiedUser()
+        && isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/users/$(userId)/private/contact);
+
+      allow update: if (
+        isVerifiedUser()
+        && isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Update Salary Preferences Only
+          incoming().diff(existing()).affectedKeys().hasOnly(['salaryAmount', 'salaryType', 'updatedAt'])
+          ||
+          // Action 2: Update Employment & Salary Profile Details
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'fullName',
+            'company',
+            'workId',
+            'salaryAmount',
+            'salaryType',
+            'updatedAt'
+          ])
+        )
+      );
+
+      allow delete: if false;
+
+      // Split-Collection PII Isolation: /users/{userId}/private/{piiId}
+      match /private/{piiId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(piiId)
+          && piiId == 'contact'
+          && hasValidParentUser(userId);
+
+        allow list: if false;
+
+        allow create: if isVerifiedUser()
+          && isOwner(userId)
+          && isValidId(userId)
+          && isValidId(piiId)
+          && piiId == 'contact'
+          && isValidUserPrivatePii(incoming())
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && hasValidParentUserAfter(userId);
+
+        allow update: if (
+          isVerifiedUser()
+          && isOwner(userId)
+          && isValidId(userId)
+          && isValidId(piiId)
+          && piiId == 'contact'
+          && isValidUserPrivatePii(incoming())
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt'])
+          && hasValidParentUser(userId)
+        );
+
+        allow delete: if false;
+      }
+
+      // User Basket of Goods Series: /users/{userId}/baskets/{basketId}
+      match /baskets/{basketId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(basketId)
+          && basketId == 'default'
+          && hasValidParentUser(userId);
+
+        allow list: if false;
+
+        allow create: if isVerifiedUser()
+          && isOwner(userId)
+          && isValidId(userId)
+          && isValidId(basketId)
+          && basketId == 'default'
+          && isValidUserBasketData(incoming())
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && hasValidParentUser(userId);
+
+        allow update: if (
+          isVerifiedUser()
+          && isOwner(userId)
+          && isValidId(userId)
+          && isValidId(basketId)
+          && basketId == 'default'
+          && isValidUserBasketData(incoming())
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'basketName',
+            'cost2021',
+            'cost2022',
+            'cost2023',
+            'cost2024',
+            'cost2025',
+            'cost2026',
+            'notes',
+            'updatedAt'
+          ])
+          && hasValidParentUser(userId)
+        );
+
+        allow delete: if isVerifiedUser()
+          && isOwner(userId)
+          && isValidId(userId)
+          && isValidId(basketId)
+          && basketId == 'default'
+          && hasValidParentUser(userId);
+      }
+    }
+  }
+}

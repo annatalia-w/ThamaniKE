@@ -1,0 +1,6 @@
+{
+  "name": "ThamaniKE",
+  "description": "Track Kenyan salary purchasing power, KRA PAYE, SHIF, NSSF, and Affordable Housing Levy deductions, inflation erosion (2021-2026), financial sustainability scores, and tailored Kenyan cost-of-living guidance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
